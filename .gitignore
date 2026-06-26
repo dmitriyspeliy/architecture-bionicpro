@@ -2,3 +2,12 @@
 2024__yandex-architecture-sso.code-workspace
 
 .idea/
+
+postgres-keycloak-data/
+redis-data/
+
+ldap-data/
+ldap-config/
+
+backups/
+/.env

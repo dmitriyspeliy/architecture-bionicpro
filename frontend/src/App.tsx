@@ -1,24 +1,18 @@
 import React from 'react';
-import { ReactKeycloakProvider } from '@react-keycloak/web';
-import Keycloak, { KeycloakConfig } from 'keycloak-js';
 import ReportPage from './components/ReportPage';
 
-const keycloakConfig: KeycloakConfig = {
-  url: process.env.REACT_APP_KEYCLOAK_URL,
-  realm: process.env.REACT_APP_KEYCLOAK_REALM||"",
-  clientId: process.env.REACT_APP_KEYCLOAK_CLIENT_ID||""
-};
-
-const keycloak = new Keycloak(keycloakConfig);
-
+/**
+ * Корневой компонент frontend-приложения.
+ *
+ * OAuth2-токены обрабатываются только backend-сервисом bionicpro-auth.
+ * Frontend использует серверную сессию через HttpOnly cookie.
+ */
 const App: React.FC = () => {
-  return (
-    <ReactKeycloakProvider authClient={keycloak}>
-      <div className="App">
-        <ReportPage />
-      </div>
-    </ReactKeycloakProvider>
-  );
+    return (
+        <div className="App">
+            <ReportPage />
+        </div>
+    );
 };
 
 export default App;
