@@ -19,7 +19,12 @@ INITIAL_LOOKBACK_DAYS = 30
 
 
 def required_env(name: str) -> str:
-    """Возвращает обязательную переменную окружения."""
+    """
+    Возвращает обязательную переменную окружения.
+
+    Если переменная отсутствует или содержит пустое значение,
+    выполнение DAG завершается с явной ошибкой конфигурации.
+    """
     value = os.getenv(name)
 
     if value is None or value.strip() == "":
@@ -30,26 +35,33 @@ def required_env(name: str) -> str:
     return value
 
 
-def postgres_connection(prefix: str):
+def telemetry_connection():
     """
-    Создаёт соединение с PostgreSQL-источником.
+    Создаёт соединение с PostgreSQL телеметрии.
 
-    Поддерживаемые префиксы:
-    - CRM_DB
-    - TELEMETRY_DB
+    CRM PostgreSQL здесь намеренно не используется:
+    изменения CRM поступают в ClickHouse через CDC-поток:
+
+        PostgreSQL WAL
+        -> Debezium
+        -> Kafka
+        -> ClickHouse KafkaEngine
+        -> Materialized View.
     """
     return psycopg.connect(
-        host=required_env(f"{prefix}_HOST"),
-        port=int(required_env(f"{prefix}_PORT")),
-        dbname=required_env(f"{prefix}_NAME"),
-        user=required_env(f"{prefix}_USERNAME"),
-        password=required_env(f"{prefix}_PASSWORD"),
+        host=required_env("TELEMETRY_DB_HOST"),
+        port=int(required_env("TELEMETRY_DB_PORT")),
+        dbname=required_env("TELEMETRY_DB_NAME"),
+        user=required_env("TELEMETRY_DB_USERNAME"),
+        password=required_env("TELEMETRY_DB_PASSWORD"),
         row_factory=dict_row,
     )
 
 
 def clickhouse_client():
-    """Создаёт HTTP-клиент ClickHouse."""
+    """
+    Создаёт HTTP-клиент ClickHouse.
+    """
     return clickhouse_connect.get_client(
         host=required_env("CLICKHOUSE_HOST"),
         port=int(required_env("CLICKHOUSE_PORT")),
@@ -60,7 +72,11 @@ def clickhouse_client():
 
 
 def as_utc(value: datetime) -> datetime:
-    """Нормализует datetime в UTC."""
+    """
+    Нормализует datetime в UTC.
+
+    Если timezone отсутствует, значение интерпретируется как UTC.
+    """
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
 
@@ -68,13 +84,19 @@ def as_utc(value: datetime) -> datetime:
 
 
 def parse_iso_datetime(value: str) -> datetime:
-    """Преобразует ISO-строку из XCom в timezone-aware datetime."""
+    """
+    Преобразует ISO-строку из XCom в timezone-aware datetime.
+    """
     return as_utc(datetime.fromisoformat(value))
 
 
 def clickhouse_datetime(value: datetime) -> str:
-    """Форматирует datetime для литерала DateTime64(3, 'UTC')."""
-    return as_utc(value).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+    """
+    Форматирует datetime для литерала ClickHouse DateTime64(3, 'UTC').
+    """
+    return as_utc(value).strftime(
+        "%Y-%m-%d %H:%M:%S.%f"
+    )[:-3]
 
 
 @task(
@@ -84,7 +106,7 @@ def clickhouse_datetime(value: datetime) -> str:
 )
 def resolve_processing_window() -> dict[str, str]:
     """
-    Определяет интервал данных для текущего запуска.
+    Определяет интервал телеметрии для текущего запуска DAG.
 
     Первый запуск:
         data_interval_end - 30 дней -> data_interval_end.
@@ -92,24 +114,35 @@ def resolve_processing_window() -> dict[str, str]:
     Последующие запуски:
         последний успешный processed_until -> data_interval_end.
 
-    Если Airflow был остановлен, один новый запуск обработает весь
+    Если Airflow был остановлен, следующий запуск обрабатывает весь
     пропущенный диапазон от watermark до текущего полного часа.
     """
     context = get_current_context()
 
-    scheduled_start_value = context.get("data_interval_start")
-    scheduled_end_value = context.get("data_interval_end")
+    scheduled_start_value = context.get(
+        "data_interval_start"
+    )
 
-    if scheduled_start_value is None or scheduled_end_value is None:
-        # У ручного запуска Airflow 3 logical_date и data interval
-        # могут отсутствовать. В таком случае используем последний
-        # полностью завершённый час.
-        scheduled_end = datetime.now(timezone.utc).replace(
+    scheduled_end_value = context.get(
+        "data_interval_end"
+    )
+
+    if (
+            scheduled_start_value is None
+            or scheduled_end_value is None
+    ):
+
+        scheduled_end = datetime.now(
+            timezone.utc
+        ).replace(
             minute=0,
             second=0,
             microsecond=0,
         )
-        scheduled_start = scheduled_end - timedelta(hours=1)
+
+        scheduled_start = (
+                scheduled_end - timedelta(hours=1)
+        )
 
         LOGGER.info(
             "Manual DAG run without data interval. "
@@ -118,16 +151,30 @@ def resolve_processing_window() -> dict[str, str]:
             scheduled_end.isoformat(),
         )
     else:
-        scheduled_start = as_utc(scheduled_start_value)
-        scheduled_end = as_utc(scheduled_end_value)
+        scheduled_start = as_utc(
+            scheduled_start_value
+        )
+
+        scheduled_end = as_utc(
+            scheduled_end_value
+        )
 
     with clickhouse_client() as client:
         result = client.query(
             """
             SELECT
-                argMax(processed_until, updated_at) AS processed_until,
-                argMax(status, updated_at) AS status
+                argMax(
+                    processed_until,
+                    updated_at
+                ) AS processed_until,
+
+                argMax(
+                    status,
+                    updated_at
+                ) AS status
+
             FROM reports_olap.etl_watermark
+
             WHERE pipeline_name = {pipeline_name:String}
             """,
             parameters={
@@ -139,21 +186,28 @@ def resolve_processing_window() -> dict[str, str]:
 
     if not rows or rows[0][0] is None:
         processing_start = (
-            scheduled_end - timedelta(days=INITIAL_LOOKBACK_DAYS)
+                scheduled_end
+                - timedelta(days=INITIAL_LOOKBACK_DAYS)
         )
+
         previous_status = "NOT_FOUND"
     else:
         processed_until = as_utc(rows[0][0])
         previous_status = str(rows[0][1])
 
-        if previous_status == "NEVER_RUN" or processed_until.year <= 1970:
+        if (
+                previous_status == "NEVER_RUN"
+                or processed_until.year <= 1970
+        ):
             processing_start = (
-                scheduled_end - timedelta(days=INITIAL_LOOKBACK_DAYS)
+                    scheduled_end
+                    - timedelta(days=INITIAL_LOOKBACK_DAYS)
             )
+
         elif processed_until >= scheduled_end:
-            # Интервал уже обрабатывался. Повторно пересчитываем
-            # текущий scheduled interval идемпотентно.
+
             processing_start = scheduled_start
+
         else:
             processing_start = processed_until
 
@@ -170,7 +224,8 @@ def resolve_processing_window() -> dict[str, str]:
     }
 
     LOGGER.info(
-        "Resolved ETL window: start=%s, end=%s, previous_status=%s",
+        "Resolved ETL window: "
+        "start=%s, end=%s, previous_status=%s",
         window["start"],
         window["end"],
         previous_status,
@@ -180,102 +235,30 @@ def resolve_processing_window() -> dict[str, str]:
 
 
 @task(
-    task_id="load_crm_snapshot",
-    retries=3,
-    retry_delay=timedelta(seconds=20),
-)
-def load_crm_snapshot() -> int:
-    """
-    Полностью обновляет snapshot клиентов из CRM в ClickHouse.
-
-    В snapshot хранится актуальная связь:
-        user_subject -> customer -> prosthesis.
-    """
-    with postgres_connection("CRM_DB") as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                SELECT
-                    customer_id,
-                    user_subject,
-                    email,
-                    full_name,
-                    region,
-                    prosthesis_id,
-                    prosthesis_model,
-                    status,
-                    updated_at
-                FROM crm_customer
-                """
-            )
-            source_rows = cursor.fetchall()
-
-    loaded_at = datetime.now(timezone.utc)
-
-    clickhouse_rows = [
-        [
-            row["customer_id"],
-            row["user_subject"],
-            row["email"],
-            row["full_name"],
-            row["region"],
-            row["prosthesis_id"],
-            row["prosthesis_model"],
-            row["status"],
-            row["updated_at"],
-            loaded_at,
-        ]
-        for row in source_rows
-    ]
-
-    with clickhouse_client() as client:
-        # CRM staging является полным актуальным snapshot.
-        client.command(
-            "TRUNCATE TABLE reports_olap.stg_crm_customer"
-        )
-
-        if clickhouse_rows:
-            client.insert(
-                "reports_olap.stg_crm_customer",
-                clickhouse_rows,
-                column_names=[
-                    "customer_id",
-                    "user_subject",
-                    "email",
-                    "full_name",
-                    "region",
-                    "prosthesis_id",
-                    "prosthesis_model",
-                    "status",
-                    "source_updated_at",
-                    "etl_loaded_at",
-                ],
-            )
-
-    LOGGER.info(
-        "CRM snapshot loaded: rows=%s",
-        len(clickhouse_rows),
-    )
-
-    return len(clickhouse_rows)
-
-
-@task(
     task_id="load_telemetry_interval",
     retries=3,
     retry_delay=timedelta(seconds=20),
 )
-def load_telemetry_interval(window: dict[str, str]) -> int:
+def load_telemetry_interval(
+        window: dict[str, str],
+) -> int:
     """
     Загружает телеметрию за полуинтервал [start, end).
 
-    Перед вставкой данные этого же диапазона удаляются из staging,
-    поэтому повторный запуск не создаёт дубликаты.
-    """
-    interval_start = parse_iso_datetime(window["start"])
-    interval_end = parse_iso_datetime(window["end"])
+    Перед вставкой строки того же интервала удаляются из staging.
+    Поэтому повторный запуск DAG не создаёт дубликаты.
 
-    with postgres_connection("TELEMETRY_DB") as connection:
+    CRM PostgreSQL в этой задаче не читается.
+    """
+    interval_start = parse_iso_datetime(
+        window["start"]
+    )
+
+    interval_end = parse_iso_datetime(
+        window["end"]
+    )
+
+    with telemetry_connection() as connection:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
@@ -288,16 +271,22 @@ def load_telemetry_interval(window: dict[str, str]) -> int:
                     temperature_c,
                     alert_code,
                     inserted_at
+
                 FROM prosthesis_telemetry
+
                 WHERE event_time >= %s
                   AND event_time < %s
-                ORDER BY event_time, event_id
+
+                ORDER BY
+                    event_time,
+                    event_id
                 """,
                 (
                     interval_start,
                     interval_end,
                 ),
             )
+
             source_rows = cursor.fetchall()
 
     loaded_at = datetime.now(timezone.utc)
@@ -325,13 +314,20 @@ def load_telemetry_interval(window: dict[str, str]) -> int:
         for row in source_rows
     ]
 
-    start_sql = clickhouse_datetime(interval_start)
-    end_sql = clickhouse_datetime(interval_end)
+    start_sql = clickhouse_datetime(
+        interval_start
+    )
+
+    end_sql = clickhouse_datetime(
+        interval_end
+    )
 
     with clickhouse_client() as client:
         client.command(
             f"""
-            ALTER TABLE reports_olap.stg_prosthesis_telemetry
+            ALTER TABLE
+                reports_olap.stg_prosthesis_telemetry
+
             DELETE WHERE
                 event_time >= toDateTime64(
                     '{start_sql}',
@@ -343,6 +339,7 @@ def load_telemetry_interval(window: dict[str, str]) -> int:
                     3,
                     'UTC'
                 )
+
             SETTINGS mutations_sync = 1
             """
         )
@@ -365,7 +362,8 @@ def load_telemetry_interval(window: dict[str, str]) -> int:
             )
 
     LOGGER.info(
-        "Telemetry interval loaded: start=%s, end=%s, rows=%s",
+        "Telemetry interval loaded: "
+        "start=%s, end=%s, rows=%s",
         interval_start.isoformat(),
         interval_end.isoformat(),
         len(clickhouse_rows),
@@ -375,153 +373,121 @@ def load_telemetry_interval(window: dict[str, str]) -> int:
 
 
 @task(
-    task_id="build_user_report_mart",
+    task_id="refresh_user_report_mart",
     retries=2,
     retry_delay=timedelta(seconds=20),
 )
-def build_user_report_mart(
-    window: dict[str, str],
-    crm_rows: int,
-    telemetry_rows: int,
+def refresh_user_report_mart(
+        window: dict[str, str],
+        telemetry_rows: int,
 ) -> int:
     """
-    Пересчитывает дневную витрину за затронутые календарные дни.
+    Обновляет итоговую отчётную витрину после загрузки телеметрии.
 
-    Даже при почасовом ETL пересчитывается полный календарный день.
-    Поэтому строка витрины содержит накопленный дневной результат,
-    а не только показатели последнего часа.
+    Витрина объединяет:
+
+    - телеметрию из stg_prosthesis_telemetry;
+    - актуальное состояние CRM из crm_customer_cdc_state.
+
+    CRM-данные уже находятся в ClickHouse благодаря CDC,
+    поэтому массовый SELECT из PostgreSQL CRM не выполняется.
     """
-    interval_start = parse_iso_datetime(window["start"])
-    interval_end = parse_iso_datetime(window["end"])
+    interval_start = parse_iso_datetime(
+        window["start"]
+    )
+
+    interval_end = parse_iso_datetime(
+        window["end"]
+    )
 
     first_date = interval_start.date()
+
     last_date = (
-        interval_end - timedelta(microseconds=1)
+            interval_end - timedelta(microseconds=1)
     ).date()
 
-    mart_range_start = datetime.combine(
-        first_date,
-        datetime.min.time(),
-        tzinfo=timezone.utc,
-    )
-
-    mart_range_end = datetime.combine(
-        last_date + timedelta(days=1),
-        datetime.min.time(),
-        tzinfo=timezone.utc,
-    )
-
-    start_sql = clickhouse_datetime(mart_range_start)
-    end_sql = clickhouse_datetime(mart_range_end)
-
     with clickhouse_client() as client:
+
         client.command(
-            f"""
-            ALTER TABLE reports_olap.user_report_daily
-            DELETE WHERE
-                report_date >= toDate('{first_date.isoformat()}')
-                AND report_date <= toDate('{last_date.isoformat()}')
-            SETTINGS mutations_sync = 1
+            """
+            SYSTEM REFRESH VIEW
+                reports_olap.user_report_daily_cdc_mv
             """
         )
 
+
         client.command(
-            f"""
-            INSERT INTO reports_olap.user_report_daily
-            (
-                user_subject,
-                report_date,
-                customer_id,
-                prosthesis_id,
-                prosthesis_model,
-                region,
-                telemetry_events,
-                usage_seconds,
-                average_battery_level,
-                minimum_battery_level,
-                average_temperature_c,
-                alerts_count,
-                last_telemetry_at,
-                crm_updated_at,
-                etl_loaded_at
-            )
+            """
+            SYSTEM WAIT VIEW
+                reports_olap.user_report_daily_cdc_mv
+            """
+        )
+
+        refresh_result = client.query(
+            """
             SELECT
-                crm.user_subject,
-                toDate(telemetry.event_time) AS report_date,
+                status,
+                exception,
+                written_rows
 
-                any(crm.customer_id) AS customer_id,
-                any(crm.prosthesis_id) AS prosthesis_id,
-                any(crm.prosthesis_model) AS prosthesis_model,
-                any(crm.region) AS region,
+            FROM system.view_refreshes
 
-                count() AS telemetry_events,
-                sum(toUInt64(telemetry.usage_seconds))
-                    AS usage_seconds,
-
-                avg(telemetry.battery_level)
-                    AS average_battery_level,
-
-                min(telemetry.battery_level)
-                    AS minimum_battery_level,
-
-                avg(telemetry.temperature_c)
-                    AS average_temperature_c,
-
-                countIf(
-                    ifNull(telemetry.alert_code, '') != ''
-                ) AS alerts_count,
-
-                max(telemetry.event_time)
-                    AS last_telemetry_at,
-
-                max(crm.source_updated_at)
-                    AS crm_updated_at,
-
-                now64(3, 'UTC')
-                    AS etl_loaded_at
-
-            FROM reports_olap.stg_prosthesis_telemetry AS telemetry
-
-            INNER JOIN reports_olap.stg_crm_customer AS crm
-                ON crm.prosthesis_id = telemetry.prosthesis_id
-
-            WHERE crm.status = 'ACTIVE'
-              AND telemetry.event_time >= toDateTime64(
-                    '{start_sql}',
-                    3,
-                    'UTC'
-              )
-              AND telemetry.event_time < toDateTime64(
-                    '{end_sql}',
-                    3,
-                    'UTC'
-              )
-
-            GROUP BY
-                crm.user_subject,
-                report_date
+            WHERE database = 'reports_olap'
+              AND view = 'user_report_daily_cdc_mv'
             """
         )
+
+        if not refresh_result.result_rows:
+            raise RuntimeError(
+                "CDC report materialized view was not found"
+            )
+
+        (
+            refresh_status,
+            refresh_exception,
+            written_rows,
+        ) = refresh_result.result_rows[0]
+
+        if refresh_exception:
+            raise RuntimeError(
+                "CDC report materialized view refresh failed: "
+                f"{refresh_exception}"
+            )
 
         count_result = client.query(
-            f"""
-            SELECT count()
-            FROM reports_olap.user_report_daily
-            WHERE report_date >= toDate('{first_date.isoformat()}')
-              AND report_date <= toDate('{last_date.isoformat()}')
             """
+            SELECT count()
+
+            FROM reports_olap.user_report_daily_cdc
+
+            WHERE report_date >= toDate(
+                {first_date:String}
+            )
+              AND report_date <= toDate(
+                {last_date:String}
+            )
+            """,
+            parameters={
+                "first_date": first_date.isoformat(),
+                "last_date": last_date.isoformat(),
+            },
         )
 
-    mart_rows = int(count_result.result_rows[0][0])
+    mart_rows = int(
+        count_result.result_rows[0][0]
+    )
 
     LOGGER.info(
-        "Report mart rebuilt: first_date=%s, last_date=%s, "
-        "crm_rows=%s, telemetry_rows=%s, mart_rows=%s",
+        "CDC report mart refreshed: "
+        "first_date=%s, last_date=%s, "
+        "telemetry_rows=%s, written_rows=%s, "
+        "mart_rows=%s, status=%s",
         first_date,
         last_date,
-        crm_rows,
         telemetry_rows,
+        written_rows,
         mart_rows,
+        refresh_status,
     )
 
     return mart_rows
@@ -533,17 +499,24 @@ def build_user_report_mart(
     retry_delay=timedelta(seconds=15),
 )
 def update_etl_watermark(
-    window: dict[str, str],
-    mart_rows: int,
+        window: dict[str, str],
+        mart_rows: int,
 ) -> None:
     """
-    Обновляет границу полностью обработанных данных.
+    Обновляет верхнюю границу обработанных данных.
 
-    Task запускается только после успешной сборки витрины, поэтому
-    watermark не продвинется при ошибке extraction, loading или
-    aggregation.
+    Task выполняется только после:
+
+    1. успешной загрузки телеметрии;
+    2. успешного обновления CDC-витрины.
+
+    Поэтому watermark не продвигается при ошибке extraction,
+    загрузки телеметрии или refreshable Materialized View.
     """
-    processed_until = parse_iso_datetime(window["end"])
+    processed_until = parse_iso_datetime(
+        window["end"]
+    )
+
     updated_at = datetime.now(timezone.utc)
 
     with clickhouse_client() as client:
@@ -566,51 +539,57 @@ def update_etl_watermark(
         )
 
     LOGGER.info(
-        "ETL watermark updated: processed_until=%s, mart_rows=%s",
+        "ETL watermark updated: "
+        "processed_until=%s, mart_rows=%s",
         processed_until.isoformat(),
         mart_rows,
     )
 
 
 with DAG(
-    dag_id=PIPELINE_NAME,
-    description=(
-        "ETL CRM and prosthesis telemetry into the user report mart"
-    ),
-    schedule=CronDataIntervalTimetable(
-        "0 * * * *",
-        timezone="UTC",
-    ),
-    start_date=pendulum.datetime(
-        2026,
-        6,
-        1,
-        tz="UTC",
-    ),
-    catchup=False,
-    max_active_runs=1,
-    default_args={
-        "owner": "bionicpro",
-        "depends_on_past": False,
-    },
-    tags=[
-        "bionicpro",
-        "reports",
-        "etl",
-    ],
+        dag_id=PIPELINE_NAME,
+        description=(
+                "Load prosthesis telemetry and refresh the "
+                "CDC-based user report mart"
+        ),
+        schedule=CronDataIntervalTimetable(
+            "0 * * * *",
+            timezone="UTC",
+        ),
+        start_date=pendulum.datetime(
+            2026,
+            6,
+            1,
+            tz="UTC",
+        ),
+        catchup=False,
+        max_active_runs=1,
+        default_args={
+            "owner": "bionicpro",
+            "depends_on_past": False,
+        },
+        tags=[
+            "bionicpro",
+            "reports",
+            "etl",
+            "cdc",
+        ],
 ) as dag:
-    processing_window = resolve_processing_window()
-
-    crm_row_count = load_crm_snapshot()
-
-    telemetry_row_count = load_telemetry_interval(
-        processing_window
+    processing_window = (
+        resolve_processing_window()
     )
 
-    report_row_count = build_user_report_mart(
-        processing_window,
-        crm_row_count,
-        telemetry_row_count,
+    telemetry_row_count = (
+        load_telemetry_interval(
+            processing_window
+        )
+    )
+
+    report_row_count = (
+        refresh_user_report_mart(
+            processing_window,
+            telemetry_row_count,
+        )
     )
 
     update_etl_watermark(

@@ -100,11 +100,15 @@ public class ReportService {
             );
         }
 
+        long crmSourceLsn =
+                repository.findCrmSourceLsn(userSubject);
+
         String objectKey = objectKeyFactory.create(
                 userSubject,
                 from,
                 to,
-                watermark
+                watermark,
+                crmSourceLsn
         );
 
         Optional<StoredReportMetadata> storedReport =
