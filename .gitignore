@@ -11,3 +11,15 @@ ldap-config/
 
 backups/
 /.env
+/airflow/logs/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Maven
+**/target/
+
+# Frontend
+**/node_modules/
+**/build/

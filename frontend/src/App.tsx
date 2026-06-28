@@ -8,11 +8,7 @@ import ReportPage from './components/ReportPage';
  * Frontend использует серверную сессию через HttpOnly cookie.
  */
 const App: React.FC = () => {
-    return (
-        <div className="App">
-            <ReportPage />
-        </div>
-    );
+    return <ReportPage />;
 };
 
 export default App;

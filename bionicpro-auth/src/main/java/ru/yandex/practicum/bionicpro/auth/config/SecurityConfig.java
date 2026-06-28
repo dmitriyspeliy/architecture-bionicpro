@@ -7,6 +7,8 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.RequestCacheConfigurer;
+import org.springframework.security.config.annotation.web.configurers.SessionManagementConfigurer;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientManager;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProvider;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClientProviderBuilder;
@@ -134,10 +136,10 @@ public class SecurityConfig {
                                 )
                         )
                 )
-                .requestCache(requestCache -> requestCache.disable())
-                .addFilterAfter(
-                        new SessionRotationFilter(),
-                        AuthorizationFilter.class
+                .requestCache(RequestCacheConfigurer::disable)
+                .sessionManagement(session -> session
+                        .sessionFixation(SessionManagementConfigurer.SessionFixationConfigurer::changeSessionId
+                        )
                 );
 
         return http.build();

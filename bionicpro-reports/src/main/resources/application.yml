@@ -1,0 +1,49 @@
+server:
+  port: 8082
+
+bionicpro:
+  reports:
+    storage:
+      endpoint: ${MINIO_ENDPOINT:http://localhost:9010}
+      region: ${MINIO_REGION:us-east-1}
+      bucket: ${MINIO_BUCKET:bionicpro-reports}
+      access-key: ${MINIO_ACCESS_KEY}
+      secret-key: ${MINIO_SECRET_KEY}
+      object-key-secret: ${REPORT_OBJECT_KEY_SECRET}
+
+    cdn:
+      base-url: ${REPORT_CDN_BASE_URL:http://localhost:3000/cdn}
+
+spring:
+  application:
+    name: bionicpro-reports
+
+  datasource:
+    url: jdbc:clickhouse://${CLICKHOUSE_HOST:localhost}:${CLICKHOUSE_PORT:8123}/${CLICKHOUSE_DATABASE:reports_olap}
+    username: ${CLICKHOUSE_USERNAME:reports}
+    password: ${CLICKHOUSE_PASSWORD}
+    driver-class-name: com.clickhouse.jdbc.ClickHouseDriver
+
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 5000
+      validation-timeout: 3000
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8080/realms/reports-realm}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+
+  endpoint:
+    health:
+      show-details: always
