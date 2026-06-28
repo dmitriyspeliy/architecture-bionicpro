@@ -16,6 +16,7 @@
 
     <modules>
         <module>bionicpro-auth</module>
+        <module>bionicpro-reports</module>
     </modules>
 
 </project>
