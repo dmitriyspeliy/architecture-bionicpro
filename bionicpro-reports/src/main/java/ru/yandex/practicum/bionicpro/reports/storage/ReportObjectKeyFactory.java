@@ -35,22 +35,25 @@ public class ReportObjectKeyFactory {
             String userSubject,
             LocalDate from,
             LocalDate to,
-            EtlWatermark watermark
+            EtlWatermark watermark,
+            long crmSourceLsn
     ) {
         String userPath = hmac(userSubject);
 
         String periodPath =
                 from + "_" + to;
 
-        String etlVersion = String.valueOf(
-                watermark.updatedAt().toEpochMilli()
-        );
+        String reportVersion =
+                "etl-%d_crm-%d".formatted(
+                        watermark.updatedAt().toEpochMilli(),
+                        crmSourceLsn
+                );
 
         return "reports/v1/%s/%s/%s/report.json"
                 .formatted(
                         userPath,
                         periodPath,
-                        etlVersion
+                        reportVersion
                 );
     }
 

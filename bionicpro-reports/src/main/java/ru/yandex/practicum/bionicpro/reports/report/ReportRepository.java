@@ -36,30 +36,56 @@ public class ReportRepository {
         """;
 
     private static final String REPORT_SQL = """
-            SELECT
-                report_date,
-                customer_id,
-                prosthesis_id,
-                prosthesis_model,
-                region,
-                telemetry_events,
-                usage_seconds,
-                average_battery_level,
-                minimum_battery_level,
-                average_temperature_c,
-                alerts_count,
-                last_telemetry_at
-            FROM reports_olap.user_report_daily FINAL
-            WHERE user_subject = ?
-              AND report_date >= toDate(?)
-              AND report_date <= toDate(?)
-            ORDER BY report_date
-            """;
+        SELECT
+            report_date,
+            customer_id,
+            prosthesis_id,
+            prosthesis_model,
+            region,
+            telemetry_events,
+            usage_seconds,
+            average_battery_level,
+            minimum_battery_level,
+            average_temperature_c,
+            alerts_count,
+            last_telemetry_at
+        FROM reports_olap.user_report_daily_cdc
+        WHERE user_subject = ?
+          AND report_date >= toDate(?)
+          AND report_date <= toDate(?)
+        ORDER BY report_date
+        """;
+
+    private static final String CRM_VERSION_SQL = """
+        SELECT
+            if(
+                count() = 0,
+                toUInt64(0),
+                max(crm_source_lsn)
+            ) AS crm_source_lsn
+        FROM reports_olap.user_report_daily_cdc
+        WHERE user_subject = ?
+        """;
 
     private final JdbcTemplate jdbcTemplate;
 
     public ReportRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
+    }
+
+    /**
+     * Возвращает LSN CRM-данных, фактически попавших
+     * в итоговую отчётную витрину пользователя.
+     */
+    public long findCrmSourceLsn(String userSubject) {
+        Long value = jdbcTemplate.queryForObject(
+                CRM_VERSION_SQL,
+                (resultSet, rowNumber) ->
+                        resultSet.getLong("crm_source_lsn"),
+                userSubject
+        );
+
+        return value == null ? 0L : value;
     }
 
     /**
