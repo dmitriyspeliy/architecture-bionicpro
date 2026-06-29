@@ -47,6 +47,18 @@ interface ReportResponse {
 }
 
 /**
+ * Ответ API со ссылкой на сформированный отчёт.
+ */
+interface ReportLinkResponse {
+  reportUrl: string;
+  source: 'GENERATED' | 'S3_HIT';
+  requestedFrom: string;
+  requestedTo: string;
+  dataAvailableThrough: string;
+  generatedAt: string;
+}
+
+/**
  * Ошибка в формате RFC 9457 Problem Details.
  */
 interface ProblemDetails {
@@ -304,7 +316,7 @@ const ReportPage: React.FC = () => {
       });
 
       const responseBody = await readJson<
-          ReportResponse | ProblemDetails
+          ReportLinkResponse | ProblemDetails
       >(response);
 
       if (response.status === 401) {
@@ -350,13 +362,52 @@ const ReportPage: React.FC = () => {
         );
       }
 
-      const reportResponse = responseBody as ReportResponse | null;
+      const reportLink = responseBody as ReportLinkResponse | null;
+
+      if (
+          !reportLink ||
+          typeof reportLink.reportUrl !== 'string' ||
+          reportLink.reportUrl.trim() === ''
+      ) {
+        throw new Error(
+            'Сервис отчётов не вернул ссылку на сформированный отчёт'
+        );
+      }
+
+      setAvailableThrough(reportLink.dataAvailableThrough);
+
+      const reportFileResponse = await fetch(reportLink.reportUrl, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+
+      if (reportFileResponse.status === 401) {
+        setSession(null);
+
+        throw new Error(
+            'Сессия истекла. Выполните вход повторно.'
+        );
+      }
+
+      if (!reportFileResponse.ok) {
+        throw new Error(
+            `Не удалось загрузить отчёт из CDN: HTTP ${reportFileResponse.status}`
+        );
+      }
+
+      const reportResponse =
+          await readJson<ReportResponse>(reportFileResponse);
 
       if (
           !reportResponse ||
           !Array.isArray(reportResponse.days)
       ) {
-        throw new Error('Сервис отчётов вернул некорректный ответ');
+        throw new Error(
+            'CDN вернул некорректное содержимое отчёта'
+        );
       }
 
       setReport(reportResponse);
