@@ -1,0 +1,85 @@
+<mxfile host="drawio-plugin" modified="2026-06-24T11:13:20.793Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36" version="22.1.22" etag="TxYl1fBqbQwkUQBaKDKA" type="embed">
+  <diagram id="bionicpro-auth-to-be" name="To-Be — управление учётными данными">
+    <mxGraphModel dx="685" dy="392" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2200" pageHeight="1300" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="user" value="&lt;b&gt;Пользователь протеза&lt;/b&gt;&lt;br&gt;[Person]" style="shape=mxgraph.c4.person2;html=1;whiteSpace=wrap;fillColor=#6C6477;strokeColor=#4D4D4D;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="40" y="470" width="190" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend" value="&lt;b&gt;Frontend / мобильное приложение&lt;/b&gt;&lt;br&gt;[Container: React, iOS, Android]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Не получает access/refresh token. Работает только с session cookie.&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="300" y="470" width="260" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="system-boundary" value="&lt;b&gt;BionicPRO&lt;/b&gt;&lt;br&gt;[Software System]" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=none;strokeColor=#666666;fontColor=#333333;align=left;verticalAlign=top;spacing=10;" parent="1" vertex="1">
+          <mxGeometry x="620" y="80" width="1450" height="1080" as="geometry" />
+        </mxCell>
+        <mxCell id="regional-boundary" value="&lt;b&gt;Региональное представительство&lt;/b&gt;&lt;br&gt;Персональные, медицинские и авторизационные данные остаются в стране" style="rounded=1;whiteSpace=wrap;html=1;dashed=1;dashPattern=8 4;fillColor=#F5F5F5;strokeColor=#999999;fontColor=#333333;align=left;verticalAlign=top;spacing=10;" parent="1" vertex="1">
+          <mxGeometry x="1360" y="150" width="610" height="460" as="geometry" />
+        </mxCell>
+        <mxCell id="auth" value="&lt;b&gt;bionicpro-auth&lt;/b&gt;&lt;br&gt;[Container: Spring Boot]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;BFF, OAuth 2.0 Authorization Code + PKCE, сессии, обновление токенов и ротация session id&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="720" y="400" width="290" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="keycloak" value="&lt;b&gt;Keycloak&lt;/b&gt;&lt;br&gt;[Container: Identity Broker]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Единая точка аутентификации, федерация LDAP и внешние OIDC/OAuth 2.0 IdP&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1090" y="240" width="260" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="session-store" value="&lt;b&gt;Session Store&lt;/b&gt;&lt;br&gt;[Container: Redis]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Access/refresh token привязаны к server-side session. Refresh token хранится зашифрованно.&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1070" y="470" width="290" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="&lt;b&gt;BionicPRO API&lt;/b&gt;&lt;br&gt;[Container]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Защищённые бизнес-операции и выдача данных только владельцу протеза&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="720" y="760" width="290" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="profile-db" value="&lt;b&gt;Региональная БД профилей&lt;/b&gt;&lt;br&gt;[Container: PostgreSQL]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Локальное хранение профиля и связи user ↔ prosthesis&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1070" y="760" width="280" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="medical-db" value="&lt;b&gt;Региональное хранилище телеметрии&lt;/b&gt;&lt;br&gt;[Container: ClickHouse / PostgreSQL]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Медицинские данные не покидают регион хранения&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1430" y="760" width="300" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="regional-idp" value="&#xa;&lt;span class=&quot;ͼ11&quot;&gt;git&lt;/span&gt;&lt;span&gt; &lt;/span&gt;&lt;span class=&quot;ͼ11&quot;&gt;add&lt;/span&gt;&lt;span&gt; &lt;/span&gt;&lt;span class=&quot;ͼ11&quot;&gt;docs&lt;/span&gt;&lt;br&gt;&#xa;&#xa;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1168BD;strokeColor=#0B4884;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1430" y="260" width="250" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ldap" value="&lt;b&gt;Региональный OpenLDAP&lt;/b&gt;&lt;br&gt;[External System]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Учётные записи и роли сотрудников представительства&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#1168BD;strokeColor=#0B4884;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1710" y="260" width="220" height="140" as="geometry" />
+        </mxCell>
+        <mxCell id="mapping-db" value="&lt;b&gt;Локальное сопоставление идентичностей&lt;/b&gt;&lt;br&gt;[Container: PostgreSQL]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Минимальные технические идентификаторы и нормализованные роли&lt;/font&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" parent="1" vertex="1">
+          <mxGeometry x="1510" y="440" width="300" height="130" as="geometry" />
+        </mxCell>
+        <mxCell id="e-user-frontend" value="Использует приложение" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="user" target="frontend" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-frontend-auth" value="HTTPS + HttpOnly, Secure, SameSite cookie" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="frontend" target="auth" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-auth-keycloak" value="Authorization Code + PKCE (S256), back-channel token exchange" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="auth" target="keycloak" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-auth-session" value="Создаёт/обновляет/ротирует сессию" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="auth" target="session-store" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-auth-api" value="Передаёт access token только по внутреннему каналу" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="auth" target="api" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-keycloak-idp" value="Identity Brokering (OIDC/OAuth 2.0)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="keycloak" target="regional-idp" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-keycloak-ldap" value="User Federation (LDAPS)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="keycloak" target="ldap" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-idp-mapping" value="Профиль после согласия пользователя" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="regional-idp" target="mapping-db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-ldap-mapping" value="Роли → единая модель ролей BionicPRO" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="ldap" target="mapping-db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-profile" value="Читает профиль и проверяет владение протезом" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="api" target="profile-db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e-api-medical" value="Читает только региональные медицинские данные" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;endFill=1;" parent="1" source="api" target="medical-db" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="2" value="&lt;b&gt;BionicPRO API&lt;/b&gt;&lt;br&gt;[Container]&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Защищённые бизнес-операции и выдача данных только владельцу протеза&lt;/font&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#23A2D9;strokeColor=#0E7DAD;fontColor=#FFFFFF;align=center;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="720" y="760" width="290" height="150" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
